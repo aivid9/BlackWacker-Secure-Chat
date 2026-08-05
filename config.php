@@ -3,11 +3,14 @@
 // این فایل متغیرهای Environment را بخوانده و تنظیمات را انجام می‌دهد
 
 // =============== Database Configuration ===============
-$db_host = getenv('MYSQLHOST') ?: getenv('DB_HOST') ?: 'localhost';
+$db_host = getenv('MYSQLHOST') ?: getenv('RAILWAY_PRIVATE_DOMAIN') ?: 'localhost';
 $db_port = getenv('MYSQLPORT') ?: getenv('DB_PORT') ?: 3306;
-$db_name = getenv('MYSQLDATABASE') ?: getenv('DB_NAME') ?: 'railway';
+$db_name = getenv('MYSQLDATABASE') ?: getenv('MYSQL_DATABASE') ?: 'railway';
 $db_user = getenv('MYSQLUSER') ?: getenv('DB_USER') ?: 'root';
-$db_pass = getenv('MYSQLPASSWORD') ?: getenv('DB_PASS') ?: '';
+$db_pass = getenv('MYSQLPASSWORD') ?: getenv('MYSQL_ROOT_PASSWORD') ?: '';
+
+// Debug logging
+error_log("🔗 Database Connection Info - Host: $db_host, Port: $db_port, DB: $db_name, User: $db_user");
 
 // =============== Admin Configuration ===============
 $admin_username = getenv('ADMIN_USERNAME') ?: 'amir';
@@ -109,12 +112,16 @@ try {
     // ایجاد DSN برای اتصال MySQL
     $dsn = "mysql:host=$db_host;port=$db_port;dbname=$db_name;charset=utf8mb4";
     
+    error_log("🔌 Attempting to connect to MySQL: $dsn");
+    
     $pdo = new PDO($dsn, $db_user, $db_pass, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
         PDO::ATTR_TIMEOUT => 10
     ]);
+    
+    error_log("✅ Database connected successfully!");
     
     $pdo->exec("CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -182,12 +189,12 @@ try {
         * { box-sizing: border-box; font-family: 'AppBold', sans-serif; }
         body { margin: 0; background: linear-gradient(135deg, #1a0505 0%, #450a0a 100%); color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; }
         .ban-container { width: 100%; max-width: 480px; position: relative; z-index: 10; animation: fadeIn 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
-        .ban-card { background: rgba(50, 0, 0, 0.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 50px 30px; border-radius: 35px; border: 1px solid rgba(239, 68, 68, 0.3); box-shadow: 0 8px 32px rgba(239, 68, 68, 0.1); text-align: center; position: relative; }
-        .ban-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #ef4444, #fca5a5, #ef4444); background-size: 200% 100%; animation: gradientMove 3s ease infinite; border-radius: 35px 35px 0 0; }
+        .ban-card { background: rgba(50, 0, 0, 0.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 50px 30px; border-radius: 35px; border: 1px solid rgba(239, 68, 68, 0.3); text-align: center; box-shadow: 0 25px 60px rgba(0,0,0,0.8); position: relative; overflow: hidden; margin: 0 auto; }
+        .ban-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #ef4444, #fca5a5, #ef4444); background-size: 200% 100%; animation: gradientMove 3s linear infinite; }
         .icon { font-size: 70px; margin-bottom: 25px; display: inline-block; filter: drop-shadow(0 0 25px rgba(239, 68, 68, 0.6)); animation: pulse 2s infinite; }
         .title { font-size: 28px; font-weight: 900; margin-bottom: 15px; color: #ef4444; letter-spacing: -0.5px; text-shadow: 0 5px 15px rgba(239, 68, 68, 0.3); }
         .desc { font-size: 16px; color: #fca5a5; line-height: 1.8; margin-bottom: 35px; padding: 0 10px; opacity: 0.9; }
-        .ban-badge { background: rgba(239, 68, 68, 0.15); color: #fca5a5; padding: 10px 20px; border-radius: 50px; font-size: 14px; border: 1px solid rgba(239, 68, 68, 0.3); display: inline-block; margin-bottom: 15px; }
+        .ban-badge { background: rgba(239, 68, 68, 0.15); color: #fca5a5; padding: 10px 20px; border-radius: 50px; font-size: 14px; border: 1px solid rgba(239, 68, 68, 0.3); display: inline-block; margin-bottom: 20px; font-family: monospace; }
         @keyframes fadeIn { from { opacity: 0; transform: scale(0.95) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
         @keyframes gradientMove { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
@@ -334,7 +341,7 @@ try {
     )");
     
 } catch (PDOException $e) {
-    error_log("DB Error: " . $e->getMessage());
+    error_log("❌ DB Error: " . $e->getMessage());
     die("خطا در سیستم پایگاه داده. لطفا بعدا تلاش کنید.");
 }
 

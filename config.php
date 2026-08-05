@@ -1,16 +1,22 @@
 <?php
 // Railway Configuration - تنظیمات خودکار برای Railway
-// این فایل متغیرهای Environment را بخوانده و تنظیمات را انجام می‌دهد
+error_log("=" . str_repeat("=", 50));
+error_log("🔧 Config.php loaded - Checking MySQL connection...");
 
 // =============== Database Configuration ===============
 $db_host = getenv('MYSQLHOST') ?: getenv('RAILWAY_PRIVATE_DOMAIN') ?: 'localhost';
-$db_port = getenv('MYSQLPORT') ?: getenv('DB_PORT') ?: 3306;
+$db_port = getenv('MYSQLPORT') ?: 3306;
 $db_name = getenv('MYSQLDATABASE') ?: getenv('MYSQL_DATABASE') ?: 'railway';
-$db_user = getenv('MYSQLUSER') ?: getenv('DB_USER') ?: 'root';
+$db_user = getenv('MYSQLUSER') ?: 'root';
 $db_pass = getenv('MYSQLPASSWORD') ?: getenv('MYSQL_ROOT_PASSWORD') ?: '';
 
 // Debug logging
-error_log("🔗 Database Connection Info - Host: $db_host, Port: $db_port, DB: $db_name, User: $db_user");
+error_log("📍 Database Configuration:");
+error_log("  Host: " . (empty($db_host) ? "❌ NOT SET" : "✅ " . $db_host));
+error_log("  Port: " . (empty($db_port) ? "❌ NOT SET" : "✅ " . $db_port));
+error_log("  Database: " . (empty($db_name) ? "❌ NOT SET" : "✅ " . $db_name));
+error_log("  User: " . (empty($db_user) ? "❌ NOT SET" : "✅ " . $db_user));
+error_log("  Password: " . (empty($db_pass) ? "❌ NOT SET" : "✅ ••••••"));
 
 // =============== Admin Configuration ===============
 $admin_username = getenv('ADMIN_USERNAME') ?: 'amir';
@@ -56,8 +62,8 @@ ini_set('memory_limit', '512M');
 ini_set('session.use_only_cookies', 1);
 ini_set('session.use_strict_mode', 1);
 ini_set('session.cookie_httponly', 1);
-ini_set('session.cookie_secure', 1);
-ini_set('session.cookie_samesite', 'Strict');
+ini_set('session.cookie_secure', 0); // Changed for local testing
+ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.gc_maxlifetime', 86400);
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -65,9 +71,9 @@ if (session_status() === PHP_SESSION_NONE) {
         'lifetime' => 86400,
         'path' => '/',
         'domain' => '', 
-        'secure' => true,
+        'secure' => false, // Changed for local testing
         'httponly' => true,
-        'samesite' => 'Strict'
+        'samesite' => 'Lax'
     ]);
     session_start();
 }
@@ -75,9 +81,8 @@ if (session_status() === PHP_SESSION_NONE) {
 // =============== Encryption Key ===============
 $encryption_key_env = getenv('ENCRYPTION_KEY');
 if (empty($encryption_key_env)) {
-    // تولید کلید جدید اگر موجود نباشد
     $encryption_key_env = bin2hex(random_bytes(32));
-    error_log("⚠️ WARNING: ENCRYPTION_KEY not found. Generated new key: " . substr($encryption_key_env, 0, 10) . "...");
+    error_log("⚠️ WARNING: ENCRYPTION_KEY not found. Generated new key");
 }
 
 if (!defined('ENCRYPTION_KEY')) define('ENCRYPTION_KEY', $encryption_key_env);
@@ -98,7 +103,6 @@ function decrypt_data($data) {
 }
 
 function get_client_ip() {
-    // Railway استفاده از Proxy می‌کند، بنابراین باید این ترتیب را رعایت کنیم
     if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) return $_SERVER['HTTP_CF_CONNECTING_IP'];
     if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
         $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
@@ -108,17 +112,19 @@ function get_client_ip() {
     return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 }
 
+// =============== DATABASE CONNECTION ===============
 try {
-    // ایجاد DSN برای اتصال MySQL
     $dsn = "mysql:host=$db_host;port=$db_port;dbname=$db_name;charset=utf8mb4";
     
-    error_log("🔌 Attempting to connect to MySQL: $dsn");
+    error_log("🔌 Attempting MySQL connection...");
+    error_log("   DSN: $dsn");
     
     $pdo = new PDO($dsn, $db_user, $db_pass, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
-        PDO::ATTR_TIMEOUT => 10
+        PDO::ATTR_TIMEOUT => 10,
+        PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"
     ]);
     
     error_log("✅ Database connected successfully!");
@@ -144,14 +150,14 @@ try {
         INDEX(is_online),
         INDEX(username),
         INDEX(device_token)
-    )");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS banned_ips (
         id INT AUTO_INCREMENT PRIMARY KEY,
         ip_address VARCHAR(45) NOT NULL UNIQUE,
         banned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         reason VARCHAR(255) DEFAULT 'Violation'
-    )");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $checkColsUsers = [
         'sticker' => "VARCHAR(10) DEFAULT '👤'",
@@ -170,7 +176,10 @@ try {
     ];
     foreach ($checkColsUsers as $col => $def) {
         $stmt = $pdo->query("SHOW COLUMNS FROM users LIKE '$col'");
-        if ($stmt->rowCount() == 0) $pdo->exec("ALTER TABLE users ADD COLUMN $col $def");
+        if ($stmt->rowCount() == 0) {
+            $pdo->exec("ALTER TABLE users ADD COLUMN $col $def");
+            error_log("  ✓ Added column: $col");
+        }
     }
 
     $client_ip = get_client_ip();
@@ -208,7 +217,6 @@ try {
             <div class="ban-badge">IP: <?php echo $client_ip; ?></div>
             <div class="desc">
                 دسترسی دستگاه شما به دلیل نقض قوانین سرور برای همیشه مسدود شده است.
-                <br>اگر فکر می‌کنید اشتباهی رخ داده، با پشتیبانی تماس بگیرید.
             </div>
         </div>
     </div>
@@ -227,7 +235,7 @@ try {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX(name),
         INDEX(invite_code)
-    )");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     
     $stmt = $pdo->query("SHOW COLUMNS FROM rooms LIKE 'invite_code'");
     if ($stmt->rowCount() == 0) $pdo->exec("ALTER TABLE rooms ADD COLUMN invite_code VARCHAR(20) DEFAULT NULL");
@@ -242,7 +250,7 @@ try {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX(user_id),
         INDEX(room_name)
-    )");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS messages (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -264,7 +272,7 @@ try {
         INDEX(file_token),
         INDEX(created_at),
         INDEX(is_read)
-    )");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     
     $checkColsMsgs = [
         'is_read' => "TINYINT DEFAULT 0",
@@ -280,7 +288,7 @@ try {
         id INT AUTO_INCREMENT PRIMARY KEY,
         setting_key VARCHAR(50) NOT NULL UNIQUE,
         setting_value VARCHAR(255) DEFAULT NULL
-    )");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     
     $stmtSet = $pdo->prepare("SELECT id FROM system_settings WHERE setting_key = ?");
     $stmtSet->execute(['lock_upload']);
@@ -301,12 +309,12 @@ try {
         reason TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX(created_at)
-    )");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS settings (
         name VARCHAR(50) PRIMARY KEY,
         value VARCHAR(255) DEFAULT NULL
-    )");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $stmtS = $pdo->prepare("SELECT name FROM settings WHERE name = ?");
     $stmtS->execute(['site_lock']);
@@ -338,11 +346,18 @@ try {
         id INT AUTO_INCREMENT PRIMARY KEY,
         message TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     
 } catch (PDOException $e) {
-    error_log("❌ DB Error: " . $e->getMessage());
-    die("خطا در سیستم پایگاه داده. لطفا بعدا تلاش کنید.");
+    error_log("❌ DATABASE ERROR ❌");
+    error_log("Error Code: " . $e->getCode());
+    error_log("Error Message: " . $e->getMessage());
+    error_log("Connection Details:");
+    error_log("  Host: $db_host:$db_port");
+    error_log("  Database: $db_name");
+    error_log("  User: $db_user");
+    error_log("=" . str_repeat("=", 50));
+    die("❌ خطا در اتصال به پایگاه داده!\n\nDatabase Error: " . $e->getMessage());
 }
 
 function perform_system_reset($pdo) {
